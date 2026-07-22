@@ -1,9 +1,8 @@
 # bblocks-viewer-base-plugins
 
 First-party view plugins for [bblocks-viewer](https://github.com/opengeospatial/bblocks-viewer)'s
-[view-plugin mechanism](../bblocks-viewer/.claude/view-plugins-design.md), reimplementing the
-viewer's built-in map/3D/web views against the exact same plugin class contract external authors
-would use (task 2, "dogfooding", from that design doc). This is a standalone package — it has no
+view-plugin mechanism, reimplementing the viewer's built-in map/3D/web views against the exact
+same plugin class contract external authors would use. This is a standalone package — it has no
 runtime dependency on bblocks-viewer itself, only on the candidate shape
 (`{ type, content, url, label }`) and plugin interface (`static supportedTypes`, optional
 `static viewName`, `constructor(candidates, context)`, optional `matches()`, `render(el)`,
