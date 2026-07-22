@@ -1,0 +1,22 @@
+{
+  "name": "@ogc/bblocks-viewer-base-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "First-party view plugins (map/3D/web) for bblocks-viewer, built against its view-plugin interface.",
+  "main": "./src/index.js",
+  "exports": "./src/index.js",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@opengeospatial/jsonld-ui-utils": "0.x",
+    "earcut": "^3.0.2",
+    "leaflet": "^1.9.4",
+    "proj4": "^2.20.8",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
