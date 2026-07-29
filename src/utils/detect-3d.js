@@ -1,11 +1,3 @@
-export function isTopoFeatureMultiCollection(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  const topoKeys = ['points', 'edges', 'rings', 'faces', 'shells', 'solids'];
-  return topoKeys.some(k =>
-    Array.isArray(data[k]) && data[k].some(fc => Array.isArray(fc?.features))
-  );
-}
-
 function _coordsHave3D(coords) {
   if (!Array.isArray(coords) || !coords.length) return false;
   if (typeof coords[0] === 'number') return coords.length >= 3;
@@ -29,8 +21,4 @@ export function isGeoJson3D(data) {
   }
   if (data.coordinates) return _geometryHas3D(data);
   return false;
-}
-
-export function hasAny3DContent(data) {
-  return isTopoFeatureMultiCollection(data) || isGeoJson3D(data);
 }

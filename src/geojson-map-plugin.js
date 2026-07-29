@@ -95,11 +95,17 @@ function isValidGeoJson(parsed) {
 // (the fallback Rainbow/SPARQL endpoints a register may declare — mirrors what the old
 // GeoJsonMapViewer.vue read from configService.config directly). Both optional; a plugin host that
 // doesn't supply them just gets popups scoped to whatever @context the GeoJSON carries inline.
+//
+// @implements {import('@ogc/bblocks-viewer-plugin-types').ViewPluginClass}
 export default class GeoJsonMapPlugin {
   static supportedTypes = SUPPORTED_TYPES;
   static viewName = 'Map view';
   static icon = 'mdi-map';
 
+  /**
+   * @param {import('@ogc/bblocks-viewer-plugin-types').ViewPluginCandidate[]} candidates
+   * @param {import('@ogc/bblocks-viewer-plugin-types').ViewPluginContext} [context]
+   */
   constructor(candidates, context = {}) {
     this.candidates = candidates;
     this.bblock = context.bblock ?? null;

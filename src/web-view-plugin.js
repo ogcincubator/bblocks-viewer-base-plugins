@@ -10,11 +10,14 @@ const ABSOLUTE_HTTP_URL = /^https?:\/\//;
 // injecting raw HTML text, and only matches a candidate that both looks like HTML *and* has
 // an absolute http(s) url to point the iframe at (a candidate with only inline `content` has
 // nothing to load into src).
+//
+// @implements {import('@ogc/bblocks-viewer-plugin-types').ViewPluginClass}
 export default class WebViewPlugin {
   static supportedTypes = SUPPORTED_TYPES;
   static viewName = 'Web view';
   static icon = 'mdi-web';
 
+  /** @param {import('@ogc/bblocks-viewer-plugin-types').ViewPluginCandidate[]} candidates */
   constructor(candidates) {
     this.candidates = candidates;
     this._candidate = undefined;

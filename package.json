@@ -7,16 +7,18 @@
   "main": "./src/index.js",
   "exports": "./src/index.js",
   "scripts": {
+    "prebuild": "node scripts/check-three-version.mjs",
     "build": "vite build"
   },
   "dependencies": {
     "@opengeospatial/jsonld-ui-utils": "0.x",
     "earcut": "^3.0.2",
     "leaflet": "^1.9.4",
-    "proj4": "^2.20.8",
-    "three": "^0.184.0"
+    "proj4": "^2.20.8"
   },
   "devDependencies": {
+    "@ogc/bblocks-viewer-plugin-types": "github:ogcincubator/bblocks-viewer-plugin-types",
+    "three": "0.184.0",
     "vite": "^6.0.0"
   }
 }

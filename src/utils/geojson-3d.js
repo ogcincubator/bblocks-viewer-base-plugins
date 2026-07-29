@@ -1,5 +1,9 @@
-import * as THREE from 'three';
 import earcut from 'earcut';
+
+// No top-level `import ... from 'three'` here: `three` is loaded from a CDN at runtime (see
+// three-d-plugin.js's resolveThree()), possibly as a shared instance via context.depResolver, so
+// this module must build its meshes against the exact THREE module instance the caller already
+// resolved rather than importing (and thus bundling) its own separate copy.
 
 const POSITION_ATTRIBUTE = 'position';
 const COORDINATE_DIMENSIONS = 3;
@@ -105,7 +109,7 @@ function computePolygonNormal(ring) {
   return len > 0 ? [nx / len, ny / len, nz / len] : [0, 0, 1];
 }
 
-function createPlaneBasis(normal) {
+function createPlaneBasis(normal, THREE) {
   const n = new THREE.Vector3(...normal).normalize();
   const ref = Math.abs(n.x) < 0.9
     ? new THREE.Vector3(1, 0, 0)
@@ -114,13 +118,13 @@ function createPlaneBasis(normal) {
   return { axisU: u, axisV: new THREE.Vector3().crossVectors(n, u) };
 }
 
-function buildPolygonMesh(rings, color) {
+function buildPolygonMesh(rings, color, THREE) {
   // Strip GeoJSON closing vertices before triangulating
   const openRings = rings.map(openRing).filter(r => r.length >= 3);
   if (!openRings.length) return null;
 
   const normal = computePolygonNormal(openRings[0]);
-  const { axisU, axisV } = createPlaneBasis(normal);
+  const { axisU, axisV } = createPlaneBasis(normal, THREE);
   const origin = new THREE.Vector3(...openRings[0][0]);
 
   const allCoords3D = openRings.flatMap(r => r);
@@ -161,14 +165,14 @@ function buildPolygonMesh(rings, color) {
   }));
 }
 
-function buildLineMesh(coords) {
+function buildLineMesh(coords, THREE) {
   const positions = coords.flatMap(c => c);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(POSITION_ATTRIBUTE, new THREE.BufferAttribute(new Float32Array(positions), COORDINATE_DIMENSIONS));
   return new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: LINE_COLOR }));
 }
 
-function buildPointMarker(coord, radius) {
+function buildPointMarker(coord, radius, THREE) {
   const geo = new THREE.SphereGeometry(radius, POINT_MARKER_SEGMENTS, POINT_MARKER_SEGMENTS);
   const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
   const marker = new THREE.Mesh(geo, mat);
@@ -178,56 +182,56 @@ function buildPointMarker(coord, radius) {
 
 // ─── Scene assembly ───────────────────────────────────────────────────────────
 
-function processGeometry(geometry, project, colorIndex, radius, out) {
+function processGeometry(geometry, project, colorIndex, radius, out, THREE) {
   if (!geometry) return;
   const color = FEATURE_COLORS[colorIndex % FEATURE_COLORS.length];
   const p = c => project(coordTo3D(c));
 
   switch (geometry.type) {
     case 'Point': {
-      const marker = buildPointMarker(p(geometry.coordinates), radius);
+      const marker = buildPointMarker(p(geometry.coordinates), radius, THREE);
       out.points.push(marker);
       out.objects.push(marker);
       break;
     }
     case 'MultiPoint':
       geometry.coordinates.forEach(c => {
-        const marker = buildPointMarker(p(c), radius);
+        const marker = buildPointMarker(p(c), radius, THREE);
         out.points.push(marker);
         out.objects.push(marker);
       });
       break;
     case 'LineString': {
-      const line = buildLineMesh(geometry.coordinates.map(p));
+      const line = buildLineMesh(geometry.coordinates.map(p), THREE);
       out.lines.push(line);
       out.objects.push(line);
       break;
     }
     case 'MultiLineString':
       geometry.coordinates.forEach(coords => {
-        const line = buildLineMesh(coords.map(p));
+        const line = buildLineMesh(coords.map(p), THREE);
         out.lines.push(line);
         out.objects.push(line);
       });
       break;
     case 'Polygon': {
-      const mesh = buildPolygonMesh(geometry.coordinates.map(ring => ring.map(p)), color);
+      const mesh = buildPolygonMesh(geometry.coordinates.map(ring => ring.map(p)), color, THREE);
       if (mesh) { out.meshes.push(mesh); out.objects.push(mesh); }
       break;
     }
     case 'MultiPolygon':
       geometry.coordinates.forEach(poly => {
-        const mesh = buildPolygonMesh(poly.map(ring => ring.map(p)), color);
+        const mesh = buildPolygonMesh(poly.map(ring => ring.map(p)), color, THREE);
         if (mesh) { out.meshes.push(mesh); out.objects.push(mesh); }
       });
       break;
     case 'GeometryCollection':
-      geometry.geometries?.forEach((g, i) => processGeometry(g, project, colorIndex + i, radius, out));
+      geometry.geometries?.forEach((g, i) => processGeometry(g, project, colorIndex + i, radius, out, THREE));
       break;
   }
 }
 
-export function buildGeoJson3DObjects(data) {
+export function buildGeoJson3DObjects(data, THREE) {
   const allPositions = [];
   gatherPositions(data, allPositions);
   if (!allPositions.length) return { objects: [], meshes: [], lines: [], points: [] };
@@ -253,11 +257,11 @@ export function buildGeoJson3DObjects(data) {
   const out = { objects: [], meshes: [], lines: [], points: [] };
 
   if (data.type === 'FeatureCollection') {
-    data.features?.forEach((f, i) => processGeometry(f.geometry, project, i, radius, out));
+    data.features?.forEach((f, i) => processGeometry(f.geometry, project, i, radius, out, THREE));
   } else if (data.type === 'Feature') {
-    processGeometry(data.geometry, project, 0, radius, out);
+    processGeometry(data.geometry, project, 0, radius, out, THREE);
   } else {
-    processGeometry(data, project, 0, radius, out);
+    processGeometry(data, project, 0, radius, out, THREE);
   }
 
   return out;

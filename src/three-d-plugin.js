@@ -1,7 +1,39 @@
 import { mimeTypeMatches } from './utils/mime-type-match.js';
-import { hasAny3DContent, isTopoFeatureMultiCollection } from './utils/detect-3d.js';
+import { isGeoJson3D } from './utils/detect-3d.js';
 
 const SUPPORTED_TYPES = ['application/geo+json', 'application/json', 'application/ld+json'];
+
+// Kept in sync with the `three` devDependency version in package.json by
+// scripts/check-three-version.mjs (run as `prebuild`) — see
+// .claude/shared-dependency-resolver-design.md for why `three` is loaded from a CDN rather than
+// bundled, and why that makes this string/that devDependency prone to silent drift if unchecked.
+const THREE_VERSION = '0.184.0';
+
+const loadThree = () => import(/* @vite-ignore */ `https://esm.sh/three@${THREE_VERSION}`);
+// esm.sh's path for OrbitControls differs from npm's `three/addons/controls/OrbitControls.js`.
+// Not resolver-shared: it's a subpath of the same `three` package/version, not an independent
+// dependency, so the sharing machinery below isn't worth the extra registry key for it (see design
+// doc's "OrbitControls" section).
+const loadOrbitControls = () => import(
+  /* @vite-ignore */ `https://esm.sh/three@${THREE_VERSION}/examples/jsm/controls/OrbitControls.js`
+);
+
+// context.depResolver is optional infra a host may supply (see
+// .claude/shared-dependency-resolver-design.md) to let two independently-versioned plugins share
+// one runtime instance of `three` instead of each fetching their own copy. Its absence doesn't
+// fall back to a bundled copy — there is none — it only means "skip the sharing optimization,"
+// still load from the CDN.
+function resolveThree(context) {
+  if (context?.depResolver) {
+    return context.depResolver.resolve({
+      name: 'three',
+      range: `^${THREE_VERSION}`,
+      version: THREE_VERSION,
+      load: loadThree,
+    });
+  }
+  return loadThree();
+}
 
 const BUTTON_STYLE = 'width: 26px; height: 26px; border: none; border-radius: 4px; cursor: pointer; '
   + 'display: flex; align-items: center; justify-content: center; padding: 0; '
@@ -24,13 +56,20 @@ const ICONS = {
 
 // One instance per matched example/transform-output (see host `matchPlugins()`), so all of this
 // state is naturally scoped per-candidate-set rather than needing to be re-derived on render.
+//
+// @implements {import('@ogc/bblocks-viewer-plugin-types').ViewPluginClass}
 export default class ThreeDPlugin {
   static supportedTypes = SUPPORTED_TYPES;
   static viewName = '3D view';
   static icon = 'mdi-cube-outline';
 
-  constructor(candidates) {
+  /**
+   * @param {import('@ogc/bblocks-viewer-plugin-types').ViewPluginCandidate[]} candidates
+   * @param {import('@ogc/bblocks-viewer-plugin-types').ViewPluginContext} [context]
+   */
+  constructor(candidates, context = {}) {
     this.candidates = candidates;
+    this._context = context;
     this._candidate = undefined;
     this._el = null;
     this._THREE = null;
@@ -46,11 +85,14 @@ export default class ThreeDPlugin {
     this._solidVertices = [];
     this._initialCameraPosition = null;
     this._initialCameraTarget = null;
-    this._isTopoFormat = false;
     this._wireframe = false;
     this._showGrid = false;
+    // Default both to visible (unlike topo's TopoFeaturePlugin, which defaults vertices to
+    // hidden): a LineString/Point-only GeoJSON document has no mesh fallback, so hiding its lines
+    // or points by default would blank the scene entirely (see bblocks-viewer commit
+    // "Fix GeoJSON 3D rendering bugs"). The toggles still let a user declutter a mesh-heavy scene.
     this._showEdges = true;
-    this._showVertices = false;
+    this._showVertices = true;
   }
 
   matches() {
@@ -63,7 +105,7 @@ export default class ThreeDPlugin {
       if (!c.type || !c.content) return false;
       if (!SUPPORTED_TYPES.some(t => mimeTypeMatches(t, c.type))) return false;
       try {
-        return hasAny3DContent(JSON.parse(c.content));
+        return isGeoJson3D(JSON.parse(c.content));
       } catch {
         return false;
       }
@@ -87,8 +129,8 @@ export default class ThreeDPlugin {
     const data = JSON.parse(candidate.content);
 
     const [THREE, { OrbitControls }] = await Promise.all([
-      import('three'),
-      import('three/addons/controls/OrbitControls.js'),
+      resolveThree(this._context),
+      loadOrbitControls(),
     ]);
     if (this._el !== el) return; // torn down before deps resolved
     this._THREE = THREE;
@@ -96,8 +138,6 @@ export default class ThreeDPlugin {
     const canvasContainer = document.createElement('div');
     canvasContainer.style.cssText = 'height: 100%; width: 100%;';
     el.appendChild(canvasContainer);
-
-    this._isTopoFormat = isTopoFeatureMultiCollection(data);
 
     const width = canvasContainer.clientWidth || 600;
     const height = canvasContainer.clientHeight || 400;
@@ -138,11 +178,7 @@ export default class ThreeDPlugin {
 
     scene.add(new THREE.AxesHelper(1));
 
-    if (this._isTopoFormat) {
-      await this._buildTopoScene(scene, THREE, data);
-    } else {
-      await this._buildGeoJsonScene(scene, data);
-    }
+    await this._buildGeoJsonScene(scene, data);
     if (this._el !== el) return; // torn down while scene was building
 
     this._fitCamera(THREE);
@@ -169,39 +205,12 @@ export default class ThreeDPlugin {
     animate();
   }
 
-  async _buildTopoScene(scene, THREE, data) {
-    const {
-      buildMaps, buildSolidGeometry, buildSolidEdgeLines,
-      createSolidMesh, createVertexMarkers, getFeatures, needsTransparency,
-    } = await import('./utils/topo-geometry.js');
-
-    const maps = buildMaps(data);
-    const solids = getFeatures(data.solids || []);
-    const opacity = needsTransparency(data) ? 0.85 : 1.0;
-
-    solids.forEach((solid, i) => {
-      const { geometry } = buildSolidGeometry(solid, maps.shellMap, maps.faceMap, maps.ringMap, maps.edgeMap, maps.pointMap);
-      const mesh = createSolidMesh(solid, i, geometry, opacity);
-      const edges = buildSolidEdgeLines(solid, maps.shellMap, maps.faceMap, maps.ringMap, maps.edgeMap, maps.pointMap);
-      const vertices = createVertexMarkers(geometry);
-
-      mesh.material.wireframe = this._wireframe;
-      edges.visible = this._showEdges;
-      vertices.visible = this._showVertices;
-
-      scene.add(mesh, edges, vertices);
-      this._solidMeshes.push(mesh);
-      this._solidEdges.push(edges);
-      this._solidVertices.push(vertices);
-    });
-  }
-
   async _buildGeoJsonScene(scene, data) {
     const { buildGeoJson3DObjects } = await import('./utils/geojson-3d.js');
-    const result = buildGeoJson3DObjects(data);
+    const result = buildGeoJson3DObjects(data, this._THREE);
     result.meshes.forEach(m => { m.material.wireframe = this._wireframe; this._solidMeshes.push(m); });
-    result.lines.forEach(l => this._solidEdges.push(l));
-    result.points.forEach(p => this._solidVertices.push(p));
+    result.lines.forEach(l => { l.visible = this._showEdges; this._solidEdges.push(l); });
+    result.points.forEach(p => { p.visible = this._showVertices; this._solidVertices.push(p); });
     result.objects.forEach(o => scene.add(o));
   }
 
@@ -253,17 +262,14 @@ export default class ThreeDPlugin {
       this._wireframe = !this._wireframe;
       this._solidMeshes.forEach(m => { m.material.wireframe = this._wireframe; });
     }, () => this._wireframe);
-
-    if (this._isTopoFormat) {
-      addButton('edges', 'Toggle edges', () => {
-        this._showEdges = !this._showEdges;
-        this._solidEdges.forEach(edge => { edge.visible = this._showEdges; });
-      }, () => this._showEdges);
-      addButton('vertices', 'Toggle vertices', () => {
-        this._showVertices = !this._showVertices;
-        this._solidVertices.forEach(v => { v.visible = this._showVertices; });
-      }, () => this._showVertices);
-    }
+    addButton('edges', 'Toggle edges', () => {
+      this._showEdges = !this._showEdges;
+      this._solidEdges.forEach(edge => { edge.visible = this._showEdges; });
+    }, () => this._showEdges);
+    addButton('vertices', 'Toggle vertices', () => {
+      this._showVertices = !this._showVertices;
+      this._solidVertices.forEach(v => { v.visible = this._showVertices; });
+    }, () => this._showVertices);
 
     el.appendChild(bar);
     this._controlsEl = bar;
