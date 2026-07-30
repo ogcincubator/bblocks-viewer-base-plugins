@@ -1,5 +1,6 @@
 import { mimeTypeMatches } from './utils/mime-type-match.js';
 import { isGeoJson3D } from './utils/detect-3d.js';
+import { showError } from './utils/show-error.js';
 
 const SUPPORTED_TYPES = ['application/geo+json', 'application/json', 'application/ld+json'];
 
@@ -120,7 +121,21 @@ export default class ThreeDPlugin {
     // `position: relative` (needed so the absolute-positioned control bar anchors to el, not some
     // further-out ancestor), additively rather than via cssText, so el's host-set height survives.
     el.style.position = 'relative';
-    this._mount(el).catch(e => console.error('ThreeDPlugin: init failed', e));
+    this._mount(el).catch(e => {
+      console.error('ThreeDPlugin: init failed', e);
+      if (this._el === el) this._showError(el, `Failed to render this 3D view (${e.message}).`);
+    });
+  }
+
+  // Tears down whatever got built so far (via destroy(), which is safe to call on a
+  // partially-initialized instance — every field it touches is null-guarded) and replaces el's
+  // content with a plain-DOM error message. Used both for _mount() failures (caught above) and
+  // for errors thrown from inside the animate() render loop below, which is the harder case: it
+  // runs on its own requestAnimationFrame stack, outside any promise chain render() could catch,
+  // so it must be caught and surfaced from inside the loop itself.
+  _showError(el, message) {
+    this.destroy(el);
+    showError(el, message);
   }
 
   async _mount(el) {
@@ -199,8 +214,13 @@ export default class ThreeDPlugin {
     const animate = () => {
       if (!this._animating) return;
       this._animFrameId = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
+      try {
+        controls.update();
+        renderer.render(scene, camera);
+      } catch (e) {
+        console.error('ThreeDPlugin: render loop failed', e);
+        this._showError(el, `An error occurred while rendering this 3D view (${e.message}).`);
+      }
     };
     animate();
   }

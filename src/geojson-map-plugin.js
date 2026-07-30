@@ -1,4 +1,5 @@
 import { mimeTypeMatches } from './utils/mime-type-match.js';
+import { showError } from './utils/show-error.js';
 // Static (not dynamic) import: a dynamic `import('...?raw')` issued at runtime from inside a
 // package listed in the host's optimizeDeps got served by Vite's dev server with
 // Content-Type: text/css instead of being transformed into a JS module — the browser then refuses
@@ -138,7 +139,13 @@ export default class GeoJsonMapPlugin {
     this._el = el;
     // Don't touch el's own size — the host (ViewPluginRenderer) already gives it a real height
     // (inline 300px, or 100% inside the fullscreen dialog's own definite-height chain).
-    this._mount(el);
+    this._mount(el).catch(e => {
+      console.error('GeoJsonMapPlugin: init failed', e);
+      if (this._el === el) {
+        this.destroy(el);
+        showError(el, `Failed to render this map view (${e.message}).`);
+      }
+    });
   }
 
   async _mount(el) {
