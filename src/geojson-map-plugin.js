@@ -179,7 +179,7 @@ export default class GeoJsonMapPlugin {
       const layer = (await createJsonLDGeoJSONLayer(L, geojson, {
         ldContext,
         augmentOptions,
-        popupOptions: { maxWidth: 400, maxHeight: 300 },
+        popupOptions: { maxWidth: 400 },
       })).addTo(map);
       this._layer = layer;
       const bounds = layer.getBounds();
