@@ -33,11 +33,6 @@ const POPUP_TABLE_CSS = `
   padding: 3px 8px;
   vertical-align: top;
 }
-.leaflet-popup-content .object-value {
-  max-width: 260px;
-  overflow-wrap: break-word;
-  word-break: break-all;
-}
 .leaflet-popup-content .object-property {
   font-weight: 500;
   color: #555;
@@ -179,7 +174,6 @@ export default class GeoJsonMapPlugin {
       const layer = (await createJsonLDGeoJSONLayer(L, geojson, {
         ldContext,
         augmentOptions,
-        popupOptions: { maxWidth: 400 },
       })).addTo(map);
       this._layer = layer;
       const bounds = layer.getBounds();

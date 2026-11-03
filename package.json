@@ -11,7 +11,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@opengeospatial/jsonld-ui-utils": "^0.4.8",
+    "@opengeospatial/jsonld-ui-utils": "^0.4.12",
     "earcut": "^3.0.2",
     "leaflet": "^1.9.4",
     "proj4": "^2.20.8"
